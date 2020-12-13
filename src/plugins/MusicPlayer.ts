@@ -1,5 +1,4 @@
 import {
-    Channel,
     Client,
     DiscordAPIError,
     DMChannel,
@@ -20,7 +19,7 @@ type Flags = {
     deleteLast: boolean;
     last: boolean;
 };
-type VideoData = { videoId: string; title: string; image: string };
+type VideoData = { videoId: string; title: string; image: string, url: string };
 
 export default class {
     private queue: any[];
@@ -29,7 +28,8 @@ export default class {
     private client: Client;
     private soloFlagList: string[];
     private lastPlayed: any;
-    constructor(client: Client) {
+    private prefix: string;
+    constructor(client: Client, prefix: string) {
         this.queue = [];
         this.isPlaying = false;
         this.lastPlayed = null;
@@ -44,6 +44,7 @@ export default class {
         };
         this.soloFlagList = ["stop", "emptyQueue", "skip", "showQueue", "deleteLast", "last"];
         this.client = client;
+        this.prefix = prefix;
     }
 
     private __getFlags(content: string): Flags {
@@ -57,7 +58,7 @@ export default class {
             content
                 .split(" ")
                 .filter((c) => {
-                    const noPrefix = c !== "!music";
+                    const noPrefix = c !== this.prefix;
                     if (filterFlags) {
                         return !Object.values(this.flagList).includes(c) && noPrefix;
                     }
@@ -74,11 +75,10 @@ export default class {
         data: VideoData
     ) {
         const { force, stop, emptyQueue, skip, showQueue, deleteLast, last } = flags;
-        const { videoId, title, image } = data;
 
         if (stop) {
-            textChannel.send("😢");
             voiceChannel.leave();
+            this.isPlaying = false;
             return false;
         }
 
@@ -90,7 +90,7 @@ export default class {
 
         if (deleteLast) {
             const last = this.queue.pop();
-            textChannel.send(`${last.title} à été enlevé de la queue 👍`);
+            textChannel.send(`${last.title}\nenlevé de la queue 👍`);
             return false;
         }
 
@@ -108,10 +108,10 @@ export default class {
             return false;
         }
 
-        if (!force && videoId) {
-            this.queue.push({ videoId, title, image });
+        if (!force && data.videoId) {
+            this.queue.push(data);
             if (this.isPlaying) {
-                textChannel.send(`${title} ajouté à la queue 👍`);
+                textChannel.send(`${data.title}\najouté à la queue 👍`);
             }
         }
 
@@ -135,27 +135,26 @@ export default class {
     ) {
         const willPlay = this.__handleFlags(textChannel, voiceChannel, flags, data);
 
-        if (!willPlay) return;
+        if (willPlay === false) return;
 
         const play = (isForced: boolean) => {
             voiceChannel
                 .join()
                 .then((connection: any) => {
-                    const queuedData = this.queue.shift();
-                    const corData = isForced ? data : queuedData;
+                    const corData = isForced ? data : this.queue.shift();
                     connection
                         .play(ytdl(corData.videoId))
                         .on("start", () => {
                             this.isPlaying = true;
                             this.lastPlayed = corData;
-                            const msg = `🎵 ${corData.title} 🎵`;
-                            textChannel.send(msg, { files: [corData.image] });
+                            const msg = `🎵 ${corData.title} 🎵\n${corData.url}`;
+                            textChannel.send(msg);
                         })
                         .on("finish", () => {
                             if (this.queue.length > 0) {
                                 play(false);
                             } else {
-                                textChannel.send("Plus de musique, ma mission est terminée 🤖");
+                                textChannel.send("Ma mission est terminée 🤖");
                                 voiceChannel.leave();
                             }
                             this.isPlaying = false;
@@ -173,11 +172,11 @@ export default class {
         play(willPlay.force);
     }
 
-    private queryChecks(msg: Message) {
+    private __queryChecks(msg: Message) {
         if (!msg.member?.voice.channel) {
-            msg.channel.send("Tu doit être dans un channel pour mettre de la musique 🤡");
+            msg.channel.send("Tu doit être dans un channel pour mettre de la musique");
             setTimeout(() => {
-                msg.channel.send("batard");
+                msg.channel.send("🤡");
             }, 2000);
             return false;
         }
@@ -201,8 +200,9 @@ export default class {
             videoId: "",
             title: "",
             image: "",
+            url: "",
         };
-        if (this.queryChecks(msg) && voiceChannel) {
+        if (this.__queryChecks(msg) && voiceChannel) {
             if (searchQuery) {
                 ytSearch(searchQuery).then((res) => {
                     const result: any = res.all.filter((r) => r.type === "video")?.[0];
@@ -210,6 +210,7 @@ export default class {
                         videoData.videoId = result.videoId;
                         videoData.title = result.title;
                         videoData.image = result.thumbnail;
+                        videoData.url = result.url;
                         this.__playerHandler(msg.channel, voiceChannel, videoData, flags);
                     }
                 });

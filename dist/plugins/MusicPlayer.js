@@ -17,7 +17,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 var yt_search_1 = __importDefault(require("yt-search"));
 var ytdl_core_1 = __importDefault(require("ytdl-core"));
 var default_1 = /** @class */ (function () {
-    function default_1(client) {
+    function default_1(client, prefix) {
         this.queue = [];
         this.isPlaying = false;
         this.lastPlayed = null;
@@ -32,6 +32,7 @@ var default_1 = /** @class */ (function () {
         };
         this.soloFlagList = ["stop", "emptyQueue", "skip", "showQueue", "deleteLast", "last"];
         this.client = client;
+        this.prefix = prefix;
     }
     default_1.prototype.__getFlags = function (content) {
         var _this = this;
@@ -46,7 +47,7 @@ var default_1 = /** @class */ (function () {
         return (content
             .split(" ")
             .filter(function (c) {
-            var noPrefix = c !== "!music";
+            var noPrefix = c !== _this.prefix;
             if (filterFlags) {
                 return !Object.values(_this.flagList).includes(c) && noPrefix;
             }
@@ -56,10 +57,9 @@ var default_1 = /** @class */ (function () {
     };
     default_1.prototype.__handleFlags = function (textChannel, voiceChannel, flags, data) {
         var force = flags.force, stop = flags.stop, emptyQueue = flags.emptyQueue, skip = flags.skip, showQueue = flags.showQueue, deleteLast = flags.deleteLast, last = flags.last;
-        var videoId = data.videoId, title = data.title, image = data.image;
         if (stop) {
-            textChannel.send("😢");
             voiceChannel.leave();
+            this.isPlaying = false;
             return false;
         }
         if (emptyQueue) {
@@ -69,7 +69,7 @@ var default_1 = /** @class */ (function () {
         }
         if (deleteLast) {
             var last_1 = this.queue.pop();
-            textChannel.send(last_1.title + " \u00E0 \u00E9t\u00E9 enlev\u00E9 de la queue \uD83D\uDC4D");
+            textChannel.send(last_1.title + "\nenlev\u00E9 de la queue \uD83D\uDC4D");
             return false;
         }
         if (last && this.isPlaying) {
@@ -85,10 +85,10 @@ var default_1 = /** @class */ (function () {
             }
             return false;
         }
-        if (!force && videoId) {
-            this.queue.push({ videoId: videoId, title: title, image: image });
+        if (!force && data.videoId) {
+            this.queue.push(data);
             if (this.isPlaying) {
-                textChannel.send(title + " ajout\u00E9 \u00E0 la queue \uD83D\uDC4D");
+                textChannel.send(data.title + "\najout\u00E9 \u00E0 la queue \uD83D\uDC4D");
             }
         }
         if (!force && this.queue.length === 0) {
@@ -103,28 +103,27 @@ var default_1 = /** @class */ (function () {
     default_1.prototype.__playerHandler = function (textChannel, voiceChannel, data, flags) {
         var _this = this;
         var willPlay = this.__handleFlags(textChannel, voiceChannel, flags, data);
-        if (!willPlay)
+        if (willPlay === false)
             return;
         var play = function (isForced) {
             voiceChannel
                 .join()
                 .then(function (connection) {
-                var queuedData = _this.queue.shift();
-                var corData = isForced ? data : queuedData;
+                var corData = isForced ? data : _this.queue.shift();
                 connection
                     .play(ytdl_core_1.default(corData.videoId))
                     .on("start", function () {
                     _this.isPlaying = true;
                     _this.lastPlayed = corData;
-                    var msg = "\uD83C\uDFB5 " + corData.title + " \uD83C\uDFB5";
-                    textChannel.send(msg, { files: [corData.image] });
+                    var msg = "\uD83C\uDFB5 " + corData.title + " \uD83C\uDFB5\n" + corData.url;
+                    textChannel.send(msg);
                 })
                     .on("finish", function () {
                     if (_this.queue.length > 0) {
                         play(false);
                     }
                     else {
-                        textChannel.send("Plus de musique, ma mission est terminée 🤖");
+                        textChannel.send("Ma mission est terminée 🤖");
                         voiceChannel.leave();
                     }
                     _this.isPlaying = false;
@@ -140,12 +139,12 @@ var default_1 = /** @class */ (function () {
         };
         play(willPlay.force);
     };
-    default_1.prototype.queryChecks = function (msg) {
+    default_1.prototype.__queryChecks = function (msg) {
         var _a;
         if (!((_a = msg.member) === null || _a === void 0 ? void 0 : _a.voice.channel)) {
-            msg.channel.send("Tu doit être dans un channel pour mettre de la musique 🤡");
+            msg.channel.send("Tu doit être dans un channel pour mettre de la musique");
             setTimeout(function () {
-                msg.channel.send("batard");
+                msg.channel.send("🤡");
             }, 2000);
             return false;
         }
@@ -170,8 +169,9 @@ var default_1 = /** @class */ (function () {
             videoId: "",
             title: "",
             image: "",
+            url: "",
         };
-        if (this.queryChecks(msg) && voiceChannel) {
+        if (this.__queryChecks(msg) && voiceChannel) {
             if (searchQuery) {
                 yt_search_1.default(searchQuery).then(function (res) {
                     var _a;
@@ -180,6 +180,7 @@ var default_1 = /** @class */ (function () {
                         videoData.videoId = result.videoId;
                         videoData.title = result.title;
                         videoData.image = result.thumbnail;
+                        videoData.url = result.url;
                         _this.__playerHandler(msg.channel, voiceChannel, videoData, flags);
                     }
                 });
