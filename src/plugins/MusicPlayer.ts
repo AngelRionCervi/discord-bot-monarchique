@@ -11,7 +11,15 @@ import {
 import ytSearch from "yt-search";
 import ytdl from "ytdl-core";
 
-type Flags = { force: boolean; stop: boolean; emptyQueue: boolean; skip: boolean; showQueue: boolean };
+type Flags = {
+    force: boolean;
+    stop: boolean;
+    emptyQueue: boolean;
+    skip: boolean;
+    showQueue: boolean;
+    deleteLast: boolean;
+    last: boolean;
+};
 type VideoData = { videoId: string; title: string; image: string };
 
 export default class {
@@ -20,17 +28,21 @@ export default class {
     private flagList: { [key: string]: string };
     private client: Client;
     private soloFlagList: string[];
+    private lastPlayed: any;
     constructor(client: Client) {
         this.queue = [];
         this.isPlaying = false;
+        this.lastPlayed = null;
         this.flagList = {
             force: "-force",
             stop: "-stop",
             emptyQueue: "-empty-queue",
             skip: "-skip",
             showQueue: "-show-queue",
+            deleteLast: "-delete-last",
+            last: "-last",
         };
-        this.soloFlagList = ["stop", "emptyQueue", "skip", "showQueue"];
+        this.soloFlagList = ["stop", "emptyQueue", "skip", "showQueue", "deleteLast", "last"];
         this.client = client;
     }
 
@@ -55,47 +67,75 @@ export default class {
         );
     }
 
-    private __playerHandler(
+    private __handleFlags(
         textChannel: TextChannel | DMChannel | NewsChannel,
         voiceChannel: VoiceChannel,
-        data: VideoData,
-        flags: Flags
+        flags: Flags,
+        data: VideoData
     ) {
-        const { force, stop, emptyQueue, skip, showQueue } = flags;
+        const { force, stop, emptyQueue, skip, showQueue, deleteLast, last } = flags;
         const { videoId, title, image } = data;
 
         if (stop) {
+            textChannel.send("😢");
             voiceChannel.leave();
-            console.log("bye bye");
-            return;
+            return false;
         }
 
         if (emptyQueue) {
             this.queue.splice(0, this.queue.length);
             textChannel.send("La queue est vide 😥");
-            return;
+            return false;
+        }
+
+        if (deleteLast) {
+            const last = this.queue.pop();
+            textChannel.send(`${last.title} à été enlevé de la queue 👍`);
+            return false;
+        }
+
+        if (last && this.isPlaying) {
+            textChannel.send(`${this.lastPlayed.title}`);
+            return false;
         }
 
         if (showQueue) {
             if (this.queue.length > 0) {
                 textChannel.send(this.queue.map((q, i) => `${i + 1}. ${q.title}`).join(", "));
             } else {
-                textChannel.send("Aucune musique dans la queue");
+                textChannel.send("Aucune musique dans la queue 🤔");
             }
-            return;
+            return false;
         }
 
         if (!force && videoId) {
             this.queue.push({ videoId, title, image });
             if (this.isPlaying) {
-                textChannel.send(`${title} ajouté à la queue`);
+                textChannel.send(`${title} ajouté à la queue 👍`);
             }
         }
 
         if (!force && this.queue.length === 0) {
-            textChannel.send("Aucune musique dans la queue");
-            return;
+            textChannel.send("Aucune musique dans la queue 🤔");
+            return false;
         }
+
+        if (force || !this.isPlaying || (this.isPlaying && skip)) {
+            return { force };
+        }
+
+        return false;
+    }
+
+    private __playerHandler(
+        textChannel: TextChannel | DMChannel | NewsChannel,
+        voiceChannel: VoiceChannel,
+        data: VideoData,
+        flags: Flags
+    ) {
+        const willPlay = this.__handleFlags(textChannel, voiceChannel, flags, data);
+
+        if (!willPlay) return;
 
         const play = (isForced: boolean) => {
             voiceChannel
@@ -107,6 +147,7 @@ export default class {
                         .play(ytdl(corData.videoId))
                         .on("start", () => {
                             this.isPlaying = true;
+                            this.lastPlayed = corData;
                             const msg = `🎵 ${corData.title} 🎵`;
                             textChannel.send(msg, { files: [corData.image] });
                         })
@@ -114,6 +155,7 @@ export default class {
                             if (this.queue.length > 0) {
                                 play(false);
                             } else {
+                                textChannel.send("Plus de musique, ma mission est terminée 🤖");
                                 voiceChannel.leave();
                             }
                             this.isPlaying = false;
@@ -128,18 +170,12 @@ export default class {
                 });
         };
 
-        if (force || !this.isPlaying || (this.isPlaying && skip)) {
-            play(force);
-        }
+        play(willPlay.force);
     }
 
-    private queryChecks(msg: Message, searchQuery: string | null) {
-        // if (!searchQuery) {
-        //     msg.channel.send("Bro je recherche quoi là ?");
-        //     return false;
-        // } else
+    private queryChecks(msg: Message) {
         if (!msg.member?.voice.channel) {
-            msg.channel.send("Tu doit être dans un channel pour mettre de la musique");
+            msg.channel.send("Tu doit être dans un channel pour mettre de la musique 🤡");
             setTimeout(() => {
                 msg.channel.send("batard");
             }, 2000);
@@ -166,7 +202,7 @@ export default class {
             title: "",
             image: "",
         };
-        if (this.queryChecks(msg, searchQuery) && voiceChannel) {
+        if (this.queryChecks(msg) && voiceChannel) {
             if (searchQuery) {
                 ytSearch(searchQuery).then((res) => {
                     const result: any = res.all.filter((r) => r.type === "video")?.[0];

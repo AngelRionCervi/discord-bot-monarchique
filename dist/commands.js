@@ -8,7 +8,7 @@ var p = "!";
 var plugins = function (client) {
     var _a;
     return (_a = {},
-        _a[p + "music"] = new MusicPlayer_1.default(client),
+        _a[p + "play"] = new MusicPlayer_1.default(client),
         _a);
 };
 exports.default = plugins;

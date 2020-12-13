@@ -20,14 +20,17 @@ var default_1 = /** @class */ (function () {
     function default_1(client) {
         this.queue = [];
         this.isPlaying = false;
+        this.lastPlayed = null;
         this.flagList = {
             force: "-force",
             stop: "-stop",
             emptyQueue: "-empty-queue",
             skip: "-skip",
             showQueue: "-show-queue",
+            deleteLast: "-delete-last",
+            last: "-last",
         };
-        this.soloFlagList = ["stop", "emptyQueue", "skip", "showQueue"];
+        this.soloFlagList = ["stop", "emptyQueue", "skip", "showQueue", "deleteLast", "last"];
         this.client = client;
     }
     default_1.prototype.__getFlags = function (content) {
@@ -51,50 +54,68 @@ var default_1 = /** @class */ (function () {
         })
             .join(" ") || null);
     };
-    default_1.prototype.__playerHandler = function (textChannel, voiceChannel, data, flags) {
-        var _this = this;
-        var force = flags.force, stop = flags.stop, emptyQueue = flags.emptyQueue, skip = flags.skip, showQueue = flags.showQueue;
+    default_1.prototype.__handleFlags = function (textChannel, voiceChannel, flags, data) {
+        var force = flags.force, stop = flags.stop, emptyQueue = flags.emptyQueue, skip = flags.skip, showQueue = flags.showQueue, deleteLast = flags.deleteLast, last = flags.last;
         var videoId = data.videoId, title = data.title, image = data.image;
         if (stop) {
+            textChannel.send("😢");
             voiceChannel.leave();
-            console.log("bye bye");
-            return;
+            return false;
         }
         if (emptyQueue) {
             this.queue.splice(0, this.queue.length);
             textChannel.send("La queue est vide 😥");
-            return;
+            return false;
+        }
+        if (deleteLast) {
+            var last_1 = this.queue.pop();
+            textChannel.send(last_1.title + " \u00E0 \u00E9t\u00E9 enlev\u00E9 de la queue \uD83D\uDC4D");
+            return false;
+        }
+        if (last && this.isPlaying) {
+            textChannel.send("" + this.lastPlayed.title);
+            return false;
         }
         if (showQueue) {
             if (this.queue.length > 0) {
                 textChannel.send(this.queue.map(function (q, i) { return i + 1 + ". " + q.title; }).join(", "));
             }
             else {
-                textChannel.send("Aucune musique dans la queue");
+                textChannel.send("Aucune musique dans la queue 🤔");
             }
-            return;
+            return false;
         }
         if (!force && videoId) {
             this.queue.push({ videoId: videoId, title: title, image: image });
             if (this.isPlaying) {
-                textChannel.send(title + " ajout\u00E9 \u00E0 la queue");
+                textChannel.send(title + " ajout\u00E9 \u00E0 la queue \uD83D\uDC4D");
             }
         }
         if (!force && this.queue.length === 0) {
-            textChannel.send("Aucune musique dans la queue");
-            return;
+            textChannel.send("Aucune musique dans la queue 🤔");
+            return false;
         }
+        if (force || !this.isPlaying || (this.isPlaying && skip)) {
+            return { force: force };
+        }
+        return false;
+    };
+    default_1.prototype.__playerHandler = function (textChannel, voiceChannel, data, flags) {
+        var _this = this;
+        var willPlay = this.__handleFlags(textChannel, voiceChannel, flags, data);
+        if (!willPlay)
+            return;
         var play = function (isForced) {
             voiceChannel
                 .join()
                 .then(function (connection) {
                 var queuedData = _this.queue.shift();
                 var corData = isForced ? data : queuedData;
-                console.log(corData);
                 connection
                     .play(ytdl_core_1.default(corData.videoId))
                     .on("start", function () {
                     _this.isPlaying = true;
+                    _this.lastPlayed = corData;
                     var msg = "\uD83C\uDFB5 " + corData.title + " \uD83C\uDFB5";
                     textChannel.send(msg, { files: [corData.image] });
                 })
@@ -103,6 +124,7 @@ var default_1 = /** @class */ (function () {
                         play(false);
                     }
                     else {
+                        textChannel.send("Plus de musique, ma mission est terminée 🤖");
                         voiceChannel.leave();
                     }
                     _this.isPlaying = false;
@@ -116,18 +138,12 @@ var default_1 = /** @class */ (function () {
                 console.log("unable to join channel", err);
             });
         };
-        if (force || !this.isPlaying || (this.isPlaying && skip)) {
-            play(force);
-        }
+        play(willPlay.force);
     };
-    default_1.prototype.queryChecks = function (msg, searchQuery) {
+    default_1.prototype.queryChecks = function (msg) {
         var _a;
-        // if (!searchQuery) {
-        //     msg.channel.send("Bro je recherche quoi là ?");
-        //     return false;
-        // } else
         if (!((_a = msg.member) === null || _a === void 0 ? void 0 : _a.voice.channel)) {
-            msg.channel.send("Tu doit être dans un channel pour mettre de la musique");
+            msg.channel.send("Tu doit être dans un channel pour mettre de la musique 🤡");
             setTimeout(function () {
                 msg.channel.send("batard");
             }, 2000);
@@ -155,7 +171,7 @@ var default_1 = /** @class */ (function () {
             title: "",
             image: "",
         };
-        if (this.queryChecks(msg, searchQuery) && voiceChannel) {
+        if (this.queryChecks(msg) && voiceChannel) {
             if (searchQuery) {
                 yt_search_1.default(searchQuery).then(function (res) {
                     var _a;

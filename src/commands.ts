@@ -4,7 +4,7 @@ import MusicPlayer from "./plugins/MusicPlayer";
 const p = "!";
 
 const plugins = (client: Client) => ({
-   [`${p}music`]: new MusicPlayer(client)
+   [`${p}play`]: new MusicPlayer(client)
 })
 
 export default plugins;
