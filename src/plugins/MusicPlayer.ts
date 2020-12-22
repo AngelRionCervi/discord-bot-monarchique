@@ -1,12 +1,4 @@
-import {
-    Client,
-    DiscordAPIError,
-    DMChannel,
-    Message,
-    NewsChannel,
-    TextChannel,
-    VoiceChannel,
-} from "discord.js";
+import { Client, DiscordAPIError, DMChannel, Message, NewsChannel, TextChannel, VoiceChannel } from "discord.js";
 import ytSearch from "yt-search";
 import ytdl from "ytdl-core";
 
@@ -19,7 +11,7 @@ type Flags = {
     deleteLast: boolean;
     last: boolean;
 };
-type VideoData = { videoId: string; title: string; image: string, url: string };
+type VideoData = { videoId: string; title: string; image: string; url: string };
 
 export default class {
     private queue: any[];
@@ -28,8 +20,7 @@ export default class {
     private client: Client;
     private soloFlagList: string[];
     private lastPlayed: any;
-    private prefix: string;
-    constructor(client: Client, prefix: string) {
+    constructor(client: Client) {
         this.queue = [];
         this.isPlaying = false;
         this.lastPlayed = null;
@@ -44,7 +35,6 @@ export default class {
         };
         this.soloFlagList = ["stop", "emptyQueue", "skip", "showQueue", "deleteLast", "last"];
         this.client = client;
-        this.prefix = prefix;
     }
 
     private __getFlags(content: string): Flags {
@@ -53,17 +43,11 @@ export default class {
         }, {} as Flags);
     }
 
-    private __getQuery(content: string, filterFlags: boolean = false): string | null {
+    private __getQuery(content: string): string | null {
         return (
             content
                 .split(" ")
-                .filter((c) => {
-                    const noPrefix = c !== this.prefix;
-                    if (filterFlags) {
-                        return !Object.values(this.flagList).includes(c) && noPrefix;
-                    }
-                    return noPrefix;
-                })
+                .filter((c) => !Object.values(this.flagList).includes(c))
                 .join(" ") || null
         );
     }
@@ -192,9 +176,10 @@ export default class {
         return false;
     }
 
-    newQuery(msg: Message) {
-        const flags = this.__getFlags(msg.content);
-        const searchQuery = this.__getQuery(msg.content, true);
+    newQuery(msg: Message, args: string[]) {
+        const query = args.join(" ");
+        const flags = this.__getFlags(query);
+        const searchQuery = this.__getQuery(query);
         const voiceChannel: VoiceChannel | undefined | null = msg.member?.voice.channel;
         const videoData: VideoData = {
             videoId: "",
@@ -204,16 +189,21 @@ export default class {
         };
         if (this.__queryChecks(msg) && voiceChannel) {
             if (searchQuery) {
-                ytSearch(searchQuery).then((res) => {
-                    const result: any = res.all.filter((r) => r.type === "video")?.[0];
-                    if (result) {
-                        videoData.videoId = result.videoId;
-                        videoData.title = result.title;
-                        videoData.image = result.thumbnail;
-                        videoData.url = result.url;
-                        this.__playerHandler(msg.channel, voiceChannel, videoData, flags);
-                    }
-                });
+                ytSearch(searchQuery)
+                    .then((res) => {
+                        const result: any = res.all.filter((r) => r.type === "video")?.[0];
+                        if (result) {
+                            videoData.videoId = result.videoId;
+                            videoData.title = result.title;
+                            videoData.image = result.thumbnail;
+                            videoData.url = result.url;
+                            this.__playerHandler(msg.channel, voiceChannel, videoData, flags);
+                        }
+                    })
+                    .catch((err) => {
+                        console.log(err);
+                        msg.channel.send("Impossible de trouver une vidéo 🤔");
+                    });
             } else if (this.__checkSoloFlags(flags)) {
                 this.__playerHandler(msg.channel, voiceChannel, videoData, flags);
             }

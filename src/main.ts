@@ -18,10 +18,14 @@ client.on("message", (msg) => {
     const { prefix, args } = parseCmd(msg.content);
 
     if (Object.keys(plugins).includes(prefix)) {
-        plugins[prefix].newQuery(msg);
+        plugins[prefix].newQuery(msg, args);
     }
     
     if (msg.content === "yo") {
         msg.reply("yo");
+    }
+
+    if (msg.content === "pff") {
+        msg.reply("hihi");
     }
 });

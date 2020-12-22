@@ -17,7 +17,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 var yt_search_1 = __importDefault(require("yt-search"));
 var ytdl_core_1 = __importDefault(require("ytdl-core"));
 var default_1 = /** @class */ (function () {
-    function default_1(client, prefix) {
+    function default_1(client) {
         this.queue = [];
         this.isPlaying = false;
         this.lastPlayed = null;
@@ -32,7 +32,6 @@ var default_1 = /** @class */ (function () {
         };
         this.soloFlagList = ["stop", "emptyQueue", "skip", "showQueue", "deleteLast", "last"];
         this.client = client;
-        this.prefix = prefix;
     }
     default_1.prototype.__getFlags = function (content) {
         var _this = this;
@@ -41,18 +40,11 @@ var default_1 = /** @class */ (function () {
             return __assign(__assign({}, acc), (_a = {}, _a[key] = content.includes(_this.flagList[key]), _a));
         }, {});
     };
-    default_1.prototype.__getQuery = function (content, filterFlags) {
+    default_1.prototype.__getQuery = function (content) {
         var _this = this;
-        if (filterFlags === void 0) { filterFlags = false; }
         return (content
             .split(" ")
-            .filter(function (c) {
-            var noPrefix = c !== _this.prefix;
-            if (filterFlags) {
-                return !Object.values(_this.flagList).includes(c) && noPrefix;
-            }
-            return noPrefix;
-        })
+            .filter(function (c) { return !Object.values(_this.flagList).includes(c); })
             .join(" ") || null);
     };
     default_1.prototype.__handleFlags = function (textChannel, voiceChannel, flags, data) {
@@ -159,11 +151,12 @@ var default_1 = /** @class */ (function () {
         }
         return false;
     };
-    default_1.prototype.newQuery = function (msg) {
+    default_1.prototype.newQuery = function (msg, args) {
         var _this = this;
         var _a;
-        var flags = this.__getFlags(msg.content);
-        var searchQuery = this.__getQuery(msg.content, true);
+        var query = args.join(" ");
+        var flags = this.__getFlags(query);
+        var searchQuery = this.__getQuery(query);
         var voiceChannel = (_a = msg.member) === null || _a === void 0 ? void 0 : _a.voice.channel;
         var videoData = {
             videoId: "",
@@ -173,7 +166,8 @@ var default_1 = /** @class */ (function () {
         };
         if (this.__queryChecks(msg) && voiceChannel) {
             if (searchQuery) {
-                yt_search_1.default(searchQuery).then(function (res) {
+                yt_search_1.default(searchQuery)
+                    .then(function (res) {
                     var _a;
                     var result = (_a = res.all.filter(function (r) { return r.type === "video"; })) === null || _a === void 0 ? void 0 : _a[0];
                     if (result) {
@@ -183,6 +177,10 @@ var default_1 = /** @class */ (function () {
                         videoData.url = result.url;
                         _this.__playerHandler(msg.channel, voiceChannel, videoData, flags);
                     }
+                })
+                    .catch(function (err) {
+                    console.log(err);
+                    msg.channel.send("Impossible de trouver une vidéo 🤔");
                 });
             }
             else if (this.__checkSoloFlags(flags)) {

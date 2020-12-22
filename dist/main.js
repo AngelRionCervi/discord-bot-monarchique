@@ -19,9 +19,12 @@ client.on("message", function (msg) {
         return;
     var _a = tools_1.parseCmd(msg.content), prefix = _a.prefix, args = _a.args;
     if (Object.keys(plugins).includes(prefix)) {
-        plugins[prefix].newQuery(msg);
+        plugins[prefix].newQuery(msg, args);
     }
     if (msg.content === "yo") {
         msg.reply("yo");
+    }
+    if (msg.content === "pff") {
+        msg.reply("hihi");
     }
 });
